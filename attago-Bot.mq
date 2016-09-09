@@ -1,0 +1,732 @@
+// lv 0: hide all, lv 1: only fatal error, lv 2: show all
+Dim __DEBUG_LEVEL__ = 2
+
+Function mlog(text, lv)
+	If __DEBUG_LEVEL__ >= lv Then 
+		TracePrint text
+	End If
+End Function
+Sub pass()
+	// We do nothing here
+End Sub
+
+
+/* Locate Tools */
+Function FindIcon(target)
+	Dim coord(2)
+	FindPic 434,571,1130,706,"Attachment:"&target&".png","000000",0,0.5,coord(0),coord(1)
+	If coord(0) > -1 And coord(1) > -1 Then
+		FindIcon = coord
+		Exit Function
+	End If
+End Function
+
+Function _WaitFor(x1, y1, x2, y2, pic, diff, scan, tor, retry, delay_time)
+	Dim intX, intY
+	For retry
+		FindPic x1, y1, x2, y2, pic, diff, scan, tor, intX, intY
+		If intX > -1 And intY > -1 Then 
+			_WaitFor = True
+			Exit Function
+		End If
+		Delay delay_time
+	Next
+	_WaitFor = False
+End Function
+Function WaitFor(x1, y1, x2, y2, pic, diff, scan, tor, retry)
+	WaitFor = _WaitFor(x1, y1, x2, y2, pic, diff, scan, tor, retry, 100)
+End Function
+Function WaitFor2(pics, retry)
+	For retry
+		For Each pic In pics
+			If _WaitFor(pic(0), pic(1), pic(2), pic(3), pic(4), pic(5), pic(6), pic(7), 1, 0) Then 
+				WaitFor2 = pic(4)
+				Exit Function
+			End If
+		Next
+		Delay 100
+	Next
+End Function
+Function WaitAndCheck(x1, y1, x2, y2, pic, diff, scan, tor, delay_time, wait_time)
+	Dim start_time = Time()
+	While (Time() - start_time) < wait_time
+		//mlog("Time: "& Time() & ", Diff: " & (Time() - start_time) & ", Wait: " & wait_time), 2
+		If Not _WaitFor(x1, y1, x2, y2, pic, diff, scan, tor, 1, 0) Then 
+			// Target pic is disapeared
+			WaitAndCheck = False
+			Exit Function
+		End If
+		Delay delay_time
+	Wend
+	
+	// Time's up
+	WaitAndCheck = True
+End Function
+
+/* Cooperation Battle */
+Function Hime3MP()
+	Dim coord(2)
+	
+	If WaitFor(741,261,770,287,"Attachment:battle_h3Selected.png","000000",0,1, 1) Then 
+		//mlog("h3 selected"), 2
+		FindPic 900, 150, 925, 280, "Attachment:battle_mpbar.png", "000000", 0, 0.9, coord(0), coord(1)
+	Else 
+		//mlog("h3 does not selected"), 2
+		FindPic 910, 150, 935, 280, "Attachment:battle_mpbar2.png", "000000", 0, 0.9, coord(0), coord(1)
+	End If
+	
+	If coord(0) > -1 And coord(1) > -1 Then 
+		//mlog("coord(1): " & coord(1)), 2
+		Hime3MP = (272 - coord(1)) / 1.13
+		Exit Function
+	End If
+	
+	Hime3MP = -1
+End Function
+Function WaitInBattle(delay_time, wait_time)
+	WaitInBattle = WaitAndCheck(1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9, delay_time, wait_time)
+End Function
+
+/* States */
+Function StateReset(job)
+	KillApp "com.appirits.utsushiyo"
+	RunApp "com.appirits.utsushiyo"
+	
+	// Title screen
+	mlog "@ Title screen", 2
+	If Not WaitFor(827, 136, 1018, 565, "Attachment:title.png", "000000", 0, 0.9, 600) Then 
+		mlog "WaitFor() timeout", 2
+		StateReset = "Timeout"
+		Exit Function
+	End If
+	Tap 910, 340
+	
+	// Wait for loading
+	mlog "@ Wait for loading", 2
+	If Not WaitFor(828, 23, 1025, 431, "Attachment:home_check1.png", "000000", 0, 0.9, 1800) Then 
+		mlog "WaitFor() timeout", 2
+		StateReset = "Timeout"
+		Exit Function
+	End If
+	
+	StateReset = "Home"
+End Function
+Function StateHome(job)
+	// Entry check
+	mlog "@ Entry check", 2
+	If Not WaitFor(828, 23, 1025, 431, "Attachment:home_check1.png", "000000", 0, 0.9, 30) Then 
+		mlog "WaitFor() timeout", 2
+		StateHome = "Timeout"
+		Exit Function
+	End If
+
+	// Determine next state
+	If job = "Coop - First target" Then 
+		StateHome = "CoopFirst"
+	ElseIf job = "Coop - Random target" Then
+		Tap 1225, 650	// crusade
+		Delay 200
+		Tap 1085, 535	// cooperation
+		
+		If Not WaitFor(312,14,452,643,"Attachment:coop_btn_randomjoin.png","000000",0,0.9, 50) Then 
+			mlog "WaitFor() timeout", 2
+			StateHome = "Timeout"
+			Exit Function
+		End If
+		StateHome = "CoopList"
+	ElseIf job = "Campaign - Dewa mine" Then
+		Tap 1225, 650	// crusade
+		Delay 200
+		Tap 1085, 650	// campaign
+		
+		If Not WaitFor(175,368,237,587,"Attachment:campaign_title.png","000000",0,0.9, 30) Then 
+			mlog "WaitFor() timeout", 2
+			StateHome = "Timeout"
+			Exit Function
+		End If
+		StateHome = "CampaignRegular"
+	Else 
+		mlog "Cannot match any task, quit", 1
+		StateHome = "Quit"
+	End If
+End Function
+
+Function StateCampaignRegular(job)
+	// Entry check
+	mlog "@ Entry check", 2
+	If Not WaitFor(175,368,237,587,"Attachment:campaign_title.png","000000",0,0.9, 10) Then 
+		mlog "WaitFor() timeout", 2
+		StateCampaignRegular = "Timeout"
+		Exit Function
+	End If
+	
+	// !!! LAZY !!!
+	If job = "Campaign - Dewa mine" Then
+		Tap 320, 360	// tap Dewa
+		Delay 500
+		Tap 320, 360	// tap Dewa mine
+		Delay 500
+		Tap 320, 360	// tap first friende
+		
+		If Not WaitFor(165,2,268,716,"Attachment:coop_join_format.png","000000",0,0.99, 20) Then 
+			mlog "WaitFor() timeout", 2
+			StateCampaignRegular = "Timeout"
+			Exit Function
+		End If
+		StateCampaignRegular = "Quit"
+	Else 
+		mlog "Cannot match any task, quit", 1
+		StateCampaignRegular = "Quit"
+	End If
+End Function
+
+Function StateCoopFirst(job)
+	// Entry check, check navi bar exist or not
+	mlog "@ Entry check", 2
+	If Not WaitFor(1159,465,1279,609,"Attachment:nav_machi.png","000000",0,0.9,10) Then 
+		mlog "WaitFor() timeout", 2
+		StateCoopFirst = "Timeout"
+		Exit Function
+	End If
+	Tap 1150, 360
+	
+	// Qucik join
+	mlog "@ Quick join", 2
+	If Not WaitFor(671,75,757,238,"Attachment:nav_quick_join.png","000000",0,0.9,20) Then 
+		mlog "WaitFor() timeout", 2
+		StateCoopFirst = "Timeout"
+		Exit Function
+	End If
+	Tap 710, 155
+	
+	// Formation
+	mlog "@ Formation", 2
+	If Not WaitFor(165,2,268,716,"Attachment:coop_join_format.png","000000",0,0.9,20) Then 
+		mlog "WaitFor() timeout", 2
+		StateCoopFirst = "Timeout"
+		Exit Function
+	End If
+	
+	StateCoopFirst = "CoopFormation"
+End Function
+Function StateCoopList(job)
+	Dim pics(2), picname
+	
+	// Entry check
+	mlog "@ Entry check", 2
+	If Not WaitFor(312,14,452,643,"Attachment:coop_btn_randomjoin.png","000000",0,0.9, 10) Then 
+		mlog "WaitFor() timeout", 2
+		StateCoopList = "Timeout"
+		Exit Function
+	End If
+
+	// Determine next state
+	If job = "Coop - Random target" Then
+		// Join random coop party
+		mlog "@ Join random coop party", 2
+		
+		Tap 380, 325	// random join
+		
+		StateCoopList = "CoopJoin"
+	Else 
+		mlog "Cannot match any task, quit", 1
+		StateCoopList = "Quit"
+	End If
+End Function
+Function StateCoopJoin(job)
+	Dim pics(6), picname
+	
+	// No entry check, need fix
+	
+	// Determine next state
+	If job = "Coop - Random target" Then 
+		mlog "@ Join the party", 2
+		pics(0) = {0, 0, 100, 200, "Attachment:party_btn_loot.png", "000000", 0, 0.9}
+		pics(1) = {551, 93, 688, 637, "Attachment:partyList_noPartyExist.png", "000000", 0, 0.9}
+		pics(2) = {580, 160, 650, 640, "Attachment:formation_noParty.png", "000000", 0, 0.9}
+		pics(3) = {1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9}
+		pics(4) = {580, 209, 652, 637, "Attachment:party_partyDismissed.png", "000000", 0, 0.9}
+		pics(5) = {571, 101, 669, 632, "Attachment:coop_noleader.png", "000000", 0, 0.9}
+		picname = WaitFor2(pics, 30)
+		If picname = "Attachment:party_btn_loot.png" Then 
+			// Join successfully
+			mlog "-- Join successfully", 2
+			StateCoopJoin = "Party"
+		ElseIf picname = "Attachment:partyList_noPartyExist.png" Then
+			// There is no party
+			mlog "-- There is no party", 2
+			//Tap 730, 215	// close
+			StateCoopJoin = "CoopList"
+		ElseIf picname = "Attachment:coop_noleader.png" Then
+			// There is no party
+			mlog "-- There is no party", 2
+			Tap 750, 360	// close
+			StateCoopJoin = "CoopList"
+		ElseIf picname = "Attachment:formation_noParty.png" Then
+			// There is no party
+			mlog "-- There is no party", 2
+			Tap 730, 215	// close
+			StateCoopJoin = "CoopList"
+		ElseIf picname = "Attachment:battle_btn_stamp.png" Then
+			// Already in battle
+			mlog "-- Already in battle", 2
+			StateCoopJoin = "BattleEntry"
+		ElseIf picname = "Attachment:party_partyDismissed.png" Then
+			// There is no party
+			mlog "-- Party is dismissed", 2
+			Tap 730, 360	// close
+			Delay 300
+			Tap 210, 640	// return to coop list
+			StateCoopJoin = "CoopList"
+		Else
+			mlog "Cannot join the party/battle properly, reset the game", 1
+			StateCoopJoin = "Reset"
+			Exit Function
+		End If
+		
+		
+	ElseIf job = "Coop - First target" Then
+		StateCoopJoin = "Quit"
+	Else 
+		mlog "Cannot match any task, quit", 1
+		StateCoopJoin = "Quit"
+	End If
+	
+End Function
+
+Function StatePartyList(job)
+	Dim pics(2), picname
+	
+	// Entry check
+	mlog "@ Entry check", 2
+	pics(0) = {443, 597, 486, 686, "Attachment:partyList_fisrtParty.png", "000000", 0, 0.9}
+	pics(1) = {551, 93, 688, 637, "Attachment:partyList_noPartyExist.png", "000000", 0, 0.9}
+	picname = WaitFor2(pics, 20)
+	If picname = "Attachment:partyList_fisrtParty.png" Then 
+		// There are parties, let we pick the first one
+		mlog "-- There are parties", 2
+		Tap 530, 340
+		
+		StatePartyList = "PartyListJoin"
+	ElseIf picname = "Attachment:partyList_noPartyExist.png" Then
+		// There is no party, refresh the list
+		mlog "-- There is no party", 2
+		Tap 765, 360
+		Delay 300
+		Tap 380, 60
+		
+		StatePartyList = "PartyList"
+	Else
+		mlog "WaitFor2() fail", 1
+		StatePartyList = "Timeout"
+		Exit Function
+	End If
+End Function
+Function StatePartyListJoin(job)
+	Dim pics(3), picname
+	
+	pics(0) = {590, 339, 650, 640, "Attachment:partyList_partyDoesNotExist.png", "000000", 0, 0.9}
+	pics(1) = {590, 219, 650, 647, "Attachment:partyList_partyFull.png", "000000", 0, 0.9}
+	pics(2) = {0, 0, 100, 200, "Attachment:party_btn_loot.png", "000000", 0, 0.9}
+	picname = WaitFor2(pics, 10)
+	If picname = "Attachment:partyList_partyDoesNotExist.png" Then 
+		// The picked party does not exist, close the popout and refresh
+		Tap 730, 360
+		Delay 300
+		Tap 380, 60
+		StatePartyListJoin = "PartyList"
+	ElseIf picname = "Attachment:partyList_partyFull.png" Then
+		// The picked party is full, close the popout and refresh
+		Tap 730, 360
+		Delay 300
+		Tap 380, 60
+		StatePartyListJoin = "PartyList"
+	ElseIf picname = "Attachment:party_btn_loot.png" Then
+		// We are in a party, everything is fine
+		StatePartyListJoin = "Party"
+	Else
+		mlog "WaitFor2() fail", 1
+		StatePartyListJoin = "Timeout"
+		Exit Function
+	End If
+End Function
+Function StateParty(job)
+	Dim pics(3), picname
+	
+	// Party screen check
+	mlog "@ Party screen check", 2
+	While WaitFor(0, 0, 100, 200, "Attachment:party_btn_loot.png", "000000", 0, 0.9, 1) 
+		pass()
+	Wend
+	
+	// Left the party screen
+	mlog "@ Left the party screen", 2
+		
+	pics(0) = {580, 209, 652, 637, "Attachment:party_partyDismissed.png", "000000", 0, 0.9}
+	pics(1) = {1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9}
+	pics(2) = {563, 154, 676, 644, "Attachment:chaos_disconnect.png", "000000", 0, 0.9}
+	picname = WaitFor2(pics, 100)
+	If picname = "Attachment:party_partyDismissed.png" Then 
+		// The picked party is dismissed, back to formation
+		mlog "-- Party is dismissed", 2
+		Tap 730, 360	// close
+		Delay 300
+		Tap 210, 640	// return to coop list
+		StateParty = "CoopList"
+	ElseIf picname = "Attachment:battle_btn_stamp.png" Then
+		// In the battle
+		mlog "-- In the battle", 2
+		StateParty = "BattleEntry"
+	ElseIf picname = "Attachment:chaos_disconnect.png" Then
+		// In the battle
+		mlog "-- Server disconnected", 2
+		StateParty = "Reset"
+	Else
+		mlog "WaitFor2() fail", 1
+		StateParty = "Timeout"
+		Exit Function
+	End If
+End Function
+
+Function StateBattleDummy(job)	
+	// Battle screen check
+	mlog "@ Battle screen check", 2
+	While _WaitFor(1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9, 1, 1000)
+		pass()
+	Wend
+	
+	// Left the battle screen
+	mlog "@ Left the battle screen", 2
+	StateBattleDummy = "BattleEnd"
+End Function
+Function StateBattleEntry(job)
+	Dim pics(2), picname
+	
+	// Entry check
+	mlog "@ Entry check", 2
+	If Not WaitFor(1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9, 10) Then 
+		mlog "WaitFor() timeout", 2
+		StateBattleEntry = "Timeout"
+		Exit Function
+	End If
+	
+	// Find out the number of party members
+	/*
+	mlog "@ Find out the number of party members", 2
+	Tap 850, 640	// Open party status
+	Delay 300
+	If WaitFor(441, 154, 505, 547, "Attachment:battle_noFourthPlayer.png", "000000", 0, 0.9, 1) Then 
+		// Party only have 3 members
+		mlog("-- Party only have 3 members"), 2
+		StateBattleEntry = "BattleDummy"
+	End If
+	Tap 710, 640	// Close party status
+	Delay 300
+	*/
+	
+	// Say hello
+	Tap 1240, 500	// Open stamp
+	Delay 200
+	Tap 960, 590	// Stamp Yoroshiku
+	Delay 200
+	Tap 1240, 500	// Close stamp
+	
+	// Find out the position
+	mlog "@ Find out the position", 2
+		
+	pics(0) = {800, 10, 900, 120, "Attachment:battle_btn_evac.png", "000000", 0, 0.9}
+	pics(1) = {800, 10, 900, 120, "Attachment:battle_btn_depart.png", "000000", 0, 0.9}
+	picname = WaitFor2(pics, 100)
+	If picname = "Attachment:battle_btn_evac.png" Then 
+		// The picked party is dismissed, back to formation
+		mlog "-- On the battle field", 2
+		StateBattleEntry = "BattleForeground"
+	ElseIf picname = "Attachment:battle_btn_depart.png" Then
+		// In the battle
+		mlog "-- At the background", 2
+		StateBattleEntry = "BattleBackground"
+	Else
+		mlog "WaitFor2() fail", 1
+		StateBattleEntry = "Timeout"
+		Exit Function
+	End If
+End Function
+Function StateBattleForeground(job)	
+	Dim pics(2), picname
+	
+	// Battle screen check
+	mlog "@ Battle screen check", 2
+	If Not WaitFor(1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9, 10) Then 
+		// Left the battle screen
+		mlog "@ Left the battle screen", 2
+		StateBattleForeground = "BattleEnd"
+		Exit Function
+	End If
+	
+	// Cast magic shield
+	Tap 1010, 550
+	
+	// Wait for depart/evac cooldown
+	mlog "@ Wait for depart/evac cooldown (10s)", 2
+	If Not WaitInBattle(1000, 10) Then 
+		// Left the battle screen
+		mlog "@ Left the battle screen", 2
+		StateBattleForeground = "BattleEnd"
+		Exit Function
+	End If
+	
+	// Wait until all the skills have been casted
+	mlog "@ Wait for skills casting (30s)", 2
+	If Not WaitInBattle(1000, 30) Then 
+		// Left the battle screen
+		mlog "@ Left the battle screen", 2
+		StateBattleForeground = "BattleEnd"
+		Exit Function
+	End If
+	
+	// Try to evac
+	mlog "@ Evac", 2
+	pics(0) = {800, 10, 900, 120, "Attachment:battle_btn_evac.png", "000000", 0, 0.9}
+	pics(1) = {800, 10, 900, 120, "Attachment:battle_btn_aggro.png", "000000", 0, 0.9}
+	
+	Tap 850, 60		// Evac
+	Delay 500
+	Do While WaitFor2(pics, 1) <> null
+		Delay 3000
+		Tap 850, 60		// Evac
+		Delay 500
+	Loop
+	
+	StateBattleForeground = "BattleBackground"
+End Function
+Function StateBattleBackground(job)	
+	// Battle screen check
+	mlog "@ Battle screen check", 2
+	If Not WaitFor(1192, 415, 1277, 583, "Attachment:battle_btn_stamp.png", "000000", 0, 0.9, 10) Then 
+		// Left the battle screen
+		mlog "@ Left the battle screen", 2
+		StateBattleBackground = "BattleEnd"
+		Exit Function
+	End If
+	
+	// Wait for depart/evac cooldown
+	mlog "@ Wait for depart/evac cooldown (10s)", 2
+	If Not WaitInBattle(1000, 10) Then 
+		// Left the battle screen
+		mlog "@ Left the battle screen", 2
+		StateBattleBackground = "BattleEnd"
+		Exit Function
+	End If
+	
+	// Rest until Hime3 MP restore to 75%
+	mlog "@ Rest until hime3 MP restore to 75%", 2
+	Dim h3mp, h3mp_threshold = 75
+	While True
+		h3mp = Hime3MP()
+		If h3mp <> -1 Then 
+			mlog "-- Hime3 MP: " & h3mp & "%", 2
+			If h3mp > h3mp_threshold Then 
+				Exit While
+			End If
+		Else 
+			mlog "Cannot catach the mp, return to dummy mode", 1
+			StateBattleBackground = "BattleDummy"
+			Exit Function
+		End If
+		Delay 1000
+	Wend
+	
+	// Try to depart
+	mlog "@ Try to depart", 2
+	Tap 850, 60		// Depart
+	Delay 500
+	Do While _WaitFor(800, 10, 900, 120, "Attachment:battle_btn_depart.png", "000000", 0, 0.9, 1, 0)
+		Delay 3000
+		Tap 850, 60		// Depart
+		Delay 500
+	Loop
+	
+	StateBattleBackground = "BattleForeground"
+End Function
+Function StateBattleEnd(job)
+	Dim pics(3), picname
+	
+	// Check the result, win or not
+	mlog "@ Check the result", 2
+	pics(0) = {0, 95, 89, 602, "Attachment:battle_loot.png", "000000", 0, 0.9}
+	pics(1) = {440, 155, 505, 550, "Attachment:battle_failPopout.png", "000000", 0, 0.9}
+	pics(2) = {572, 112, 669, 635, "Attachment:battle_failPopout2.png", "000000", 0, 0.9}
+	
+	picname = WaitFor2(pics, 100)
+	If picname = "Attachment:battle_loot.png" Then 
+		// We win the battle
+		mlog "-- Win", 2
+		StateBattleEnd = "BattleResult"
+	ElseIf picname = "Attachment:battle_failPopout.png" or picname = "Attachment:battle_failPopout2.png" Then 
+		// We lose the battle :(
+		mlog "-- Lose", 2
+		Tap 800, 360	// close
+		
+		// Determine next state
+		If job = "Coop - First target" Then 
+			StateBattleEnd = "CoopFirst"
+		ElseIf job = "Coop - Random target" Then 
+			StateBattleEnd = "CoopEntry"
+		Else 
+			mlog "Cannot match any task, quit", 1
+			StateBattleEnd = "Quit"
+		End If
+	Else
+		mlog "WaitFor2() fail", 1
+		StateBattleEnd = "Timeout"
+		Exit Function
+	End If
+End Function
+Function StateBattleResult(job)
+	Dim pics(2), picname
+	
+	// Entry check
+	mlog "@ Entry check", 2
+	If Not WaitFor(0, 95, 89, 602, "Attachment:battle_loot.png", "000000", 0, 0.9, 10) Then 
+		mlog "WaitFor() timeout", 2
+		StateBattleResult = "Timeout"
+		Exit Function
+	End If
+	
+	// Loot screen
+	mlog "@ Loot screen", 2
+	While WaitFor(0, 95, 89, 602, "Attachment:battle_loot.png", "000000", 0, 0.9, 1)
+		Tap 1230, 360
+		Delay 100
+	Wend
+	
+	// Friend invitation screen
+	mlog "@ Friend invitation screen", 2
+	pics(0) = {122, 397, 189, 714, "Attachment:battle_friend.png", "000000", 0, 0.9}
+	pics(1) = {714, 262, 786, 458, "Attachment:battle_nofriend.png", "000000", 0, 0.9}
+	picname = WaitFor2(pics, 10)
+	If picname = "Attachment:battle_friend.png" Then 
+		Tap 1220, 230
+		Delay 300
+		Tap 780, 360
+	ElseIf picname = "Attachment:battle_nofriend.png" Then
+		Tap 750, 360
+	Else 
+		mlog "WaitFor2() fail", 1
+		StateBattleResult = "Timeout"
+		Exit Function
+	End If
+	
+	// Coop screen
+	mlog "@ Coop screen", 2
+	If Not WaitFor(312,14,452,643,"Attachment:coop_btn_randomjoin.png","000000",0,0.9, 50) Then 
+		mlog "WaitFor() timeout", 2
+		StateBattleResult = "Timeout"
+		Exit Function
+	End If
+	
+	// Determine next state
+	If job = "Coop - First target" Then 
+		StateBattleResult = "CoopFirst"
+	ElseIf job = "Coop - Random target" Then 
+		StateBattleResult = "CoopList"
+	Else 
+		mlog "Cannot match any task, quit", 1
+		StateBattleResult = "Quit"
+	End If
+End Function
+
+/* Main Part */
+Function StateOops(job)
+	If WaitFor(442, 219, 783, 469, "Attachment:oops_blackout.png", "000000", 0, 0.9, 1) Then 
+		mlog "-- The game is crashed, reset", 2
+		StateOops = "Reset"
+	ElseIf WaitFor(566,99,670,638,"Attachment:oops_backToHome.png","000000",0,0.9, 1) Then 
+		mlog "-- There is error, and we have returned to home", 2
+		Tap 750, 360	// close popout
+		StateOops = "Home"
+	Else 
+		mlog "-- Unknown condition, quit", 2
+		StateOops = "Quit"
+	End If
+End Function
+
+Function ExecState(name, job)
+	If name = "Reset" Then 
+		ExecState = StateReset(job)
+	ElseIf name = "Home" Then
+		ExecState = StateHome(job)
+		
+	// Campaign
+	ElseIf name = "CampaignRegular" Then
+		ExecState = StateCampaignRegular(job)
+		
+	// Cooperation
+	ElseIf name = "CoopFirst" Then
+		ExecState = StateCoopFirst(job)
+	ElseIf name = "CoopList" Then
+		ExecState = StateCoopList(job)
+	ElseIf name = "CoopJoin" Then
+		ExecState = StateCoopJoin(job)
+		
+	// Party
+	ElseIf name = "PartyList" Then
+		ExecState = StatePartyList(job)
+	ElseIf name = "PartyListJoin" Then
+		ExecState = StatePartyListJoin(job)
+	ElseIf name = "Party" Then
+		ExecState = StateParty(job)
+	
+	// Battle
+	ElseIf name = "BattleDummy" Then
+		ExecState = StateBattleDummy(job)
+	ElseIf name = "BattleEntry" Then
+		ExecState = StateBattleEntry(job)
+	ElseIf name = "BattleForeground" Then
+		ExecState = StateBattleForeground(job)
+	ElseIf name = "BattleBackground" Then
+		ExecState = StateBattleBackground(job)
+	ElseIf name = "BattleEnd" Then
+		ExecState = StateBattleEnd(job)
+	ElseIf name = "BattleResult" Then
+		ExecState = StateBattleResult(job)
+		
+	// Oops, what's happened?
+	ElseIf name = "Oops" Then
+		ExecState = StateOops(job)
+	// Quit
+	ElseIf name = "Quit" Then
+		ExecState = "Quit"
+	// State not match
+	Else 
+		ExecState = -1
+	End If
+End Function
+
+Sub Main()
+	Dim state = "Reset"
+	Dim job = "Coop - Random target"
+	
+	While True
+		mlog " * State: " & state, 2
+		state = ExecState(state, job)
+		
+		If state = -1 Then 
+			mlog "[Error] Cannot find next state, trying to reset", 1
+			state = "Quit"
+		ElseIf state = "Timeout" Then
+			mlog "[Error] Timeout without handling, go to oops state", 1
+			state = "Oops"
+			//state = "Quit"	// for debugging
+		ElseIf state = null Then
+			mlog "[Error] No state has been return, quit", 1
+			Exit While
+		ElseIf state = "Quit" Then
+			mlog "Quit", 0
+			Exit While
+		End If
+	Wend
+
+End Sub
+
+Main()
